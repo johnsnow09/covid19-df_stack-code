@@ -1,0 +1,324 @@
+## Loading libs
+
+```{r}
+library(tidyverse)
+library(ggthemes)
+```
+
+```{r}
+library(lubridate)
+library(covid19.analytics)
+library(data.table)
+library(plotly)
+library(gghighlight)
+library(zoo)   # this is for moving averages
+# library(ggThemeAssist) 
+library(glue)
+library(scales)
+library(lubridate)
+```
+
+```{r}
+library(gapminder)
+```
+
+## Loading data
+
+```{r}
+df_all_cases <- covid19.analytics::covid19.data()
+
+df_all_cases %>% head()
+```
+
+## Data Prep.
+
+```{r}
+continent_lookup <- gapminder %>% 
+  filter(year == max(year)) %>%   
+  select(-year)
+
+continent_lookup
+```
+
+
+```{r}
+df_all_cases <- df_all_cases %>% 
+  left_join(continent_lookup, by = c("Country_Region" = "country"))
+
+df_all_cases
+```
+
+
+```{r}
+df_all_cases <- df_all_cases %>% 
+  select(Province_State, Country_Region, continent, pop, gdpPercap, lifeExp, 
+         Confirmed, Deaths, Recovered, Active, Incident_Rate, Case_Fatality_Ratio, everything())
+
+df_all_cases
+```
+
+```{r}
+df_all_cases <- df_all_cases %>% 
+  mutate(continent = as.character(continent))
+
+df_all_cases
+```
+
+
+```{r}
+df_all_cases[which(is.na(df_all_cases$continent)), "continent"] <- "Unknown" 
+
+```
+
+```{r}
+df_all_cases <- df_all_cases %>% 
+  mutate(continent = as.factor(continent))
+```
+
+
+### Filling unknown continent values {.tabset}
+
+#### Names
+```{r}
+df_all_cases[df_all_cases$Country_Region == "US", "continent"] <- "Americas"
+df_all_cases[df_all_cases$Country_Region == "Bhutan", "continent"] <- "Asia"
+df_all_cases[df_all_cases$Country_Region == "Brunei", "continent"] <- "Asia"
+df_all_cases[df_all_cases$Country_Region == "Burma", "continent"] <- "Asia"
+df_all_cases[df_all_cases$Country_Region == "Maldives", "continent"] <- "Asia"
+df_all_cases[df_all_cases$Country_Region == "Qatar", "continent"] <- "Asia"
+df_all_cases[df_all_cases$Country_Region == "United Arab Emirates", "continent"] <- "Asia"
+df_all_cases[df_all_cases$Country_Region == "Taiwan*", "continent"] <- "Asia"
+df_all_cases[df_all_cases$Country_Region == "Monaco", "continent"] <- "Europe"
+df_all_cases[df_all_cases$Country_Region == "Luxembourg", "continent"] <- "Europe"
+df_all_cases[df_all_cases$Country_Region == "Lithuania", "continent"] <- "Europe"
+df_all_cases[df_all_cases$Country_Region == "Russia", "continent"] <- "Europe"
+df_all_cases[df_all_cases$Country_Region == "Ukraine", "continent"] <- "Europe"
+df_all_cases[df_all_cases$Country_Region == "Tajikistan", "continent"] <- "Europe"
+df_all_cases[df_all_cases$Country_Region == "Uzbekistan", "continent"] <- "Europe"
+df_all_cases[df_all_cases$Country_Region == "Korea, South", "continent"] <- "Asia"
+df_all_cases[df_all_cases$Country_Region == "Czechia", "continent"] <- "Europe"
+```
+
+
+#### Population
+```{r}
+df_all_cases[df_all_cases$Country_Region == "US", "pop"] <- 330052960
+df_all_cases[df_all_cases$Country_Region == "Bhutan", "pop"] <- 771608
+df_all_cases[df_all_cases$Country_Region == "Brunei", "pop"] <- 437479
+df_all_cases[df_all_cases$Country_Region == "Burma", "pop"] <- 54409800
+df_all_cases[df_all_cases$Country_Region == "Maldives", "pop"] <- 540544
+df_all_cases[df_all_cases$Country_Region == "Qatar", "pop"] <- 2881053
+df_all_cases[df_all_cases$Country_Region == "United Arab Emirates", "pop"] <- 9890402
+df_all_cases[df_all_cases$Country_Region == "Taiwan*", "pop"] <- 23816775
+df_all_cases[df_all_cases$Country_Region == "Monaco", "pop"] <- 39242
+df_all_cases[df_all_cases$Country_Region == "Luxembourg", "pop"] <- 625978
+df_all_cases[df_all_cases$Country_Region == "Lithuania", "pop"] <- 2722289
+df_all_cases[df_all_cases$Country_Region == "Russia", "pop"] <- 145934462
+df_all_cases[df_all_cases$Country_Region == "Ukraine", "pop"] <- 43733762
+df_all_cases[df_all_cases$Country_Region == "Tajikistan", "pop"] <- 9537645
+df_all_cases[df_all_cases$Country_Region == "Uzbekistan", "pop"] <- 33469203
+df_all_cases[df_all_cases$Country_Region == "Korea, South", "pop"] <- 51290514
+df_all_cases[df_all_cases$Country_Region == "Czechia", "pop"] <- 10718488
+```
+
+
+#### gdpPercap
+```{r}
+df_all_cases[df_all_cases$Country_Region == "US", "gdpPercap"] <- 65297.5
+df_all_cases[df_all_cases$Country_Region == "Bhutan", "gdpPercap"] <- 3316.2
+df_all_cases[df_all_cases$Country_Region == "Brunei", "gdpPercap"] <- 31086.8
+df_all_cases[df_all_cases$Country_Region == "Burma", "gdpPercap"] <- 1407.8
+df_all_cases[df_all_cases$Country_Region == "Maldives", "gdpPercap"] <- 10626.5
+df_all_cases[df_all_cases$Country_Region == "Qatar", "gdpPercap"] <- 62088.1
+df_all_cases[df_all_cases$Country_Region == "United Arab Emirates", "gdpPercap"] <- 43103.3
+df_all_cases[df_all_cases$Country_Region == "Taiwan*", "gdpPercap"] <- 26910.229
+df_all_cases[df_all_cases$Country_Region == "Monaco", "gdpPercap"] <- 185829.0
+df_all_cases[df_all_cases$Country_Region == "Luxembourg", "gdpPercap"] <- 114704.6
+df_all_cases[df_all_cases$Country_Region == "Lithuania", "gdpPercap"] <- 19601.9
+df_all_cases[df_all_cases$Country_Region == "Russia", "gdpPercap"] <- 11585.0
+df_all_cases[df_all_cases$Country_Region == "Ukraine", "gdpPercap"] <- 3659.0
+df_all_cases[df_all_cases$Country_Region == "Tajikistan", "gdpPercap"] <- 870.8
+df_all_cases[df_all_cases$Country_Region == "Uzbekistan", "gdpPercap"] <- 1724.8
+df_all_cases[df_all_cases$Country_Region == "Korea, South", "gdpPercap"] <- 31362.75
+df_all_cases[df_all_cases$Country_Region == "Czechia", "gdpPercap"] <- 23078.57
+```
+
+
+#### lifeExp
+```{r}
+df_all_cases[df_all_cases$Country_Region == "US", "lifeExp"] <- 79.11
+df_all_cases[df_all_cases$Country_Region == "Bhutan", "lifeExp"] <- 72.77
+df_all_cases[df_all_cases$Country_Region == "Brunei", "lifeExp"] <- 76.35
+df_all_cases[df_all_cases$Country_Region == "Burma", "lifeExp"] <- 67.78
+df_all_cases[df_all_cases$Country_Region == "Maldives", "lifeExp"] <- 79.89
+df_all_cases[df_all_cases$Country_Region == "Qatar", "lifeExp"] <- 80.73
+df_all_cases[df_all_cases$Country_Region == "United Arab Emirates", "lifeExp"] <- 78.46
+df_all_cases[df_all_cases$Country_Region == "Taiwan*", "lifeExp"] <- 81.04
+df_all_cases[df_all_cases$Country_Region == "Monaco", "lifeExp"] <- 85.8
+df_all_cases[df_all_cases$Country_Region == "Luxembourg", "lifeExp"] <- 82.79
+df_all_cases[df_all_cases$Country_Region == "Lithuania", "lifeExp"] <- 76.41
+df_all_cases[df_all_cases$Country_Region == "Russia", "lifeExp"] <- 72.99
+df_all_cases[df_all_cases$Country_Region == "Ukraine", "lifeExp"] <- 72.50
+df_all_cases[df_all_cases$Country_Region == "Tajikistan", "lifeExp"] <- 71.76
+df_all_cases[df_all_cases$Country_Region == "Uzbekistan", "lifeExp"] <- 72.04
+df_all_cases[df_all_cases$Country_Region == "Korea, South", "lifeExp"] <- 82.63
+df_all_cases[df_all_cases$Country_Region == "Czechia", "lifeExp"] <- 79.48
+```
+
+### Summarise
+
+
+```{r}
+df_all_cases_sum <- df_all_cases %>% 
+  group_by(Country_Region) %>% 
+  summarise(Confirmed = sum(Confirmed),
+            Active = sum(Active),
+            Deaths = sum(Deaths),
+            Recovered = sum(Recovered)) %>% 
+  ungroup() %>% 
+  mutate(Case_Fatality_Ratio = Deaths * 100 / Confirmed) %>% 
+  arrange(desc(Confirmed))
+```
+
+
+```{r}
+df_all_cases_sum <- left_join(x = df_all_cases_sum,
+          y = df_all_cases %>% select(Country_Region, continent, pop, gdpPercap, lifeExp) %>% distinct(),
+          by = "Country_Region") 
+```
+
+
+####################################################
+####################################################
+####################################################
+
+
+#### recovered ts 
+```{r}
+df_ts_recovered <- covid19.data("ts-recovered") 
+```
+
+#### confirmed ts 
+```{r}
+df_ts_confirmed <- covid19.data("ts-confirmed") 
+```
+#### deaths ts 
+```{r}
+df_ts_deaths <- covid19.data("ts-deaths") 
+```
+### Long/ gather data {.tabset}
+
+#### confirmed
+```{r}
+df_gather_confirmed <-  gather(data = df_ts_confirmed, key = "Date", value = "Confirmed", -c("Province.State","Lat","Long", "Country.Region")) 
+```
+
+#### recovered
+
+```{r}
+df_gather_recovered <-  gather(data = df_ts_recovered, key = "Date", value = "Recovered", -c("Province.State","Lat","Long", "Country.Region")) 
+```
+
+#### deaths
+```{r}
+df_gather_deaths <-  gather(data = df_ts_deaths, key = "Date", value = "Deaths", -c("Province.State","Lat","Long", "Country.Region")) 
+```
+
+### Joining gathered data
+
+```{r}
+grouped_cases_df <- df_gather_confirmed %>%  
+  full_join(df_gather_recovered, by = c("Province.State", "Country.Region", 
+                                        "Lat", "Long", "Date"))
+
+grouped_cases_df
+```
+
+
+```{r}
+grouped_cases_df <- grouped_cases_df %>% 
+  full_join(df_gather_deaths,by = c("Province.State", "Country.Region", "Lat", "Long", "Date"))
+
+grouped_cases_df
+```
+
+### adding columns {.tabset}
+
+#### active cases
+
+```{r}
+grouped_cases_df <- grouped_cases_df %>% 
+  mutate(Active = Confirmed - (Recovered + Deaths),
+         Date = as.Date(Date))
+
+grouped_cases_df
+```
+
+#### CFR
+```{r}
+grouped_cases_df <- grouped_cases_df %>% 
+  mutate(Case_Fatality_Ratio = Deaths * 100 / Confirmed)
+```
+
+### data processing
+
+#### data checks & cleaning
+
+Replacing missing values with 0
+
+```{r}
+grouped_cases_df[which(is.na(grouped_cases_df$Case_Fatality_Ratio)), "Case_Fatality_Ratio"] <- 0
+```
+
+
+```{r}
+grouped_cases_df <- grouped_cases_df %>% 
+  mutate(Province.State = as.factor(Province.State),
+         Country.Region = as.factor(Country.Region))
+```
+
+#### Adding continent
+
+```{r}
+grouped_cases_df <- left_join(x = grouped_cases_df,
+          y = df_all_cases_sum %>% select(Country_Region, continent),
+          by = c("Country.Region" = "Country_Region")
+            )
+```
+
+#### Long form data
+
+```{r}
+df_stack <- gather(data = grouped_cases_df, key = "Cases_type", value = Cases_count, 
+       -c("Province.State", "Country.Region", "continent", Lat, Long, Date, Case_Fatality_Ratio))
+
+df_stack
+```
+
+```{r}
+df_stack <- df_stack %>% 
+  
+  mutate(Cases_type = as.factor(Cases_type),
+         Cases_count = as.numeric(Cases_count),
+         Date = as.Date(Date))
+```
+
+
+```{r}
+df_stack <- df_stack %>% 
+  mutate(Case_Fatality_Ratio = round(Case_Fatality_Ratio, digits = 2)) 
+
+df_stack
+```
+
+
+
+
+
+
+
+
+
+
+
+
