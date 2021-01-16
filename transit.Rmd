@@ -1,0 +1,749 @@
+---
+title: "tidytuesday David Robinson - transit Analysis"
+output: 
+  html_notebook:
+    highlight: tango
+    df_print: paged
+    toc: yes
+    toc_float:
+      collapsed: yes
+      smooth_scroll: yes
+    number_sections: yes
+    toc_depth: 6
+  html_document:
+    toc: yes
+    toc_depth: '6'
+    df_print: paged
+---
+
+# source
+
+https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-01-05/readme.md
+
+https://github.com/dgrtwo/data-screencasts/blob/master/2021_01_05_transit_costs.Rmd
+
+https://www.youtube.com/watch?v=8jNQzce13SE
+
+# Options & Settings
+
+CSS for scrollable output & Header colors 
+
+```{css, echo=FALSE}
+.scroll-100 {
+  max-height: 100px;
+  overflow-y: auto;
+  background-color: inherit;
+}
+```
+
+
+```{r}
+library(tidyverse)
+library(tidytuesdayR)
+library(scales)
+library(glue)
+```
+
+
+```{r}
+theme_set(theme_minimal())
+```
+
+
+# Data 
+
+Download the weekly data
+
+```{r}
+tt <- tidytuesdayR::tt_load("2021-01-05")
+
+head(tt)
+```
+
+# Summary
+
+```{r}
+str(tt)
+```
+
+```{r}
+library(countrycode)
+```
+
+
+```{r}
+transit_cost <- tt$transit_cost %>% 
+  mutate_at(vars(country,city,line), as.factor) %>% 
+  mutate_at(vars(start_year,end_year, real_cost), as.numeric)
+
+str(transit_cost)
+```
+
+```{r}
+summary(transit_cost)
+```
+
+
+```{r }
+transit_cost %>% 
+  add_count(city, name = "city_counts") %>% 
+  select(city, city_counts) %>% 
+  unique() %>% 
+  arrange(desc(city_counts))
+```
+
+## Freq. function
+
+```{r}
+top_freq <- function(df, topn=10){
+
+  df %>% 
+    select_if(is.factor) %>% 
+    imap(function(feature_value, feature_name) {
+      
+      count(data.frame(x = feature_value), x) %>% 
+        filter(!is.na(x)) %>%
+        slice_max(n = topn, order_by = n) %>% 
+      
+          ggplot(aes(x = fct_reorder(x, n), y = n)) +
+          geom_col() +
+          coord_flip() +
+          theme(axis.text.x = element_text(angle=90)) +
+          labs(title = feature_name,
+               x = feature_name)
+  
+      })
+
+}
+
+top_freq(transit_cost, 15)
+```
+
+
+```{r}
+transit_cost <- transit_cost %>% 
+  filter(!is.na(e)) %>% 
+  mutate(country = as.character(country),
+         
+         # if you don't convert to "char" above then due to factors it will return NA in country
+         country_code = ifelse(country == "UK", "GB", country),
+         country = countrycode(country_code, "iso2c", "country.name"),
+         country = as.factor(country),
+         tunnel_per = tunnel / length,
+         rr = ifelse(rr, "Railroad", "Not Railroad"))
+
+transit_cost
+```
+
+```{r}
+transit_cost %>% 
+  count(city, country, sort = TRUE)
+```
+
+```{r}
+top_freq(transit_cost, 20)
+```
+
+```{r}
+transit_cost %>%
+  add_count(line, sort = TRUE) %>% 
+  select(line, n) %>% 
+  unique() %>%
+  slice_max(order_by = n, n =15) %>% 
+  pull(line)
+```
+
+
+```{r}
+ transit_cost %>%
+  add_count(line, sort = TRUE) %>% 
+  filter(line %in% (transit_cost %>%
+                    add_count(line, sort = TRUE) %>% 
+                    select(line, n) %>% 
+                    unique() %>%
+                    slice_max(order_by = n, n =15) %>% 
+                    pull(line))
+         ) %>%
+  
+  ggplot(aes(x = fct_reorder(line, n), y = n, fill = year)) +
+  geom_col() +
+  coord_flip() +
+  theme(axis.text.x = element_text(angle=90)) +
+  labs(title = "top 15 lines segmented by years as color ",
+       x = "line",
+       fill = "year")
+```
+
+
+```{r}
+ transit_cost %>%
+  add_count(line, sort = TRUE) %>% 
+  filter(line %in% (transit_cost %>%
+                    add_count(line, sort = TRUE) %>% 
+                    select(line, n) %>% 
+                    unique() %>%
+                    slice_max(order_by = n, n =15) %>% 
+                    pull(line))
+         ) %>%
+  
+  ggplot(aes(x = fct_reorder(line, n), y = n, fill = year, group = -year)) +
+  geom_col() +
+  coord_flip() +
+  theme(axis.text.x = element_text(angle=90)) +
+  labs(title = "top 15 lines segmented by years as color ",
+       x = "line",
+       fill = "year") +
+  scale_fill_viridis_b()
+```
+
+
+
+```{r}
+ transit_cost %>%
+  add_count(line, sort = TRUE) %>% 
+  filter(line %in% (transit_cost %>%
+                    add_count(line, sort = TRUE) %>% 
+                    select(line, n) %>% 
+                    unique() %>%
+                    slice_max(order_by = n, n =15) %>% 
+                    pull(line))
+         ) %>%
+  mutate(line = fct_reorder(line, year)) %>% 
+  ggplot(aes(xmin = start_year, xmax = end_year, y = line, color = country),
+         size = real_cost) +
+  geom_errorbarh(height = .2) +
+  labs(title = "Top 15 lines wrt year",
+       x = "Year",
+       y = "",
+       color = "Country")
+```
+
+Above chart shows that lines of same name appears in multiple countries, which is not the right way of creating this chart
+
+## reorder_within()
+
+```{r fig.width=8, fig.height=8}
+ transit_cost %>%
+  add_count(line, sort = TRUE) %>% 
+  filter(line %in% (transit_cost %>%
+                    add_count(line, sort = TRUE) %>% 
+                    select(line, n) %>% 
+                    unique() %>%
+                    slice_max(order_by = n, n =15) %>% 
+                    pull(line))
+         ) %>%
+  
+  # using reorder_within() instead of fct_reorder()
+  mutate(line = reorder_within(line, year, country)) %>% 
+  ggplot(aes(xmin = start_year, xmax = end_year, y = line, color = country),
+         size = real_cost) +
+  geom_errorbarh(height = .8) +
+  labs(title = "Top 15 'Project lines' wrt year now segrgated country wise",
+       subtitle = "Top 15 line names turned into more when segregated using reorder_within",
+       x = "Year",
+       y = "",
+       color = "Country")
+```
+
+
+```{r fig.width=8, fig.height=8}
+ transit_cost %>%
+  add_count(line, sort = TRUE) %>% 
+  filter(line %in% (transit_cost %>%
+                    add_count(line, sort = TRUE) %>% 
+                    select(line, n) %>% 
+                    unique() %>%
+                    slice_max(order_by = n, n =15) %>% 
+                    pull(line))
+         ) %>%
+  
+  # using reorder_within() instead of fct_reorder()
+  mutate(line = reorder_within(line, year, country)) %>% 
+  ggplot(aes(xmin = start_year, xmax = end_year, y = line, color = country),
+         size = real_cost) +
+  geom_errorbarh(height = .8) +
+  labs(title = "Top 15 'Project lines' wrt year now segrgated country wise",
+       subtitle = "Top 15 line names turned into more when segregated using reorder_within",
+       x = "Year",
+       y = "",
+       color = "Country") +
+  scale_y_reordered()
+```
+
+
+```{r}
+ transit_cost %>%
+  add_count(line, sort = TRUE) %>% 
+  filter(line %in% (transit_cost %>%
+                      group_by(country, line) %>% 
+                      add_count(line, sort = TRUE) %>% 
+                      select(line, n) %>% 
+                      unique() %>% 
+                      ungroup() %>% 
+                      slice_max(order_by = n, n =15) %>% 
+                      pull(line))
+         ) %>%
+  mutate(line = fct_reorder(line, year)) %>% 
+  ggplot(aes(xmin = start_year, xmax = end_year, y = line, color = country),
+         size = real_cost) +
+  geom_errorbarh(height = .2) +
+  labs(title = "Top 15 grouped by country & line ",
+       x = "Year",
+       y = "",
+       color = "Country")
+```
+
+```{r}
+ transit_cost %>%
+  add_count(line, sort = TRUE) %>% 
+  filter(line %in% (transit_cost %>%
+                      group_by(country, line) %>% 
+                      add_count(line, sort = TRUE) %>% 
+                      select(line, n) %>% 
+                      unique() %>% 
+                      ungroup() %>% 
+                      slice_max(order_by = n, n =15) %>% 
+                      pull(line))
+         ) %>%
+  mutate(line = fct_reorder(line, year)) %>% 
+  ggplot(aes(xmin = start_year, xmax = end_year, y = line, color = city),
+         size = real_cost) +
+  geom_errorbarh(height = .2) +
+  labs(title = "Top 15 grouped by country & line ",
+       x = "Year",
+       y = "",
+       color = "City")
+```
+
+
+```{r}
+transit_cost %>% 
+  filter(country == "United States") %>% 
+  mutate(line = fct_reorder(line, year)) %>% 
+  ggplot(aes(xmin = start_year, xmax = end_year, y = line),
+         color = city,
+         size = real_cost) +
+  geom_errorbarh(height = .2) +
+  labs(x = "Year",
+       y = "",
+       color = "City")
+```
+
+```{r}
+transit_cost %>% 
+  ggplot(aes(cost_km_millions)) +
+  geom_histogram() +
+  scale_x_continuous(labels = dollar) +
+  labs(title = "Distribution of Cost of constructing lines",
+       x = "Cost / KM (USD Millions)")
+```
+
+## Cost/km {.tabset .tabset-fade .tabset-pills}
+
+### Data prep.
+
+```{r}
+transit_cost %>% 
+  filter(!is.na(cost_km_millions),
+         tunnel_per == 1) %>% 
+  mutate(country = fct_lump(country, 10))
+```
+
+### Top Countries box plot 
+
+```{r}
+transit_cost %>% 
+  filter(!is.na(cost_km_millions),
+         tunnel_per == 1) %>% 
+  mutate(country = fct_lump(country, 10)) %>% 
+  add_count(country) %>% 
+  mutate(country = glue("{country} ({n})"),
+         country = fct_reorder(country, cost_km_millions)) %>% 
+  
+  ggplot(aes(cost_km_millions, country)) +
+  geom_boxplot() +
+  scale_x_continuous(labels = dollar) +
+  labs(x = "Cost / km (Mn USD)", y = "")
+  
+```
+
+### +colored
+
+```{r}
+transit_cost %>% 
+  filter(!is.na(cost_km_millions),
+         tunnel_per == 1) %>% 
+  mutate(country = fct_lump(country, 10)) %>% 
+  add_count(country) %>% 
+  mutate(country = glue("{country} ({n})"),
+         country = fct_reorder(country, cost_km_millions)) %>% 
+  
+  ggplot(aes(cost_km_millions, country, color = country)) +
+  geom_boxplot() +
+  geom_jitter() +
+  scale_x_continuous(labels = dollar) +
+  labs(x = "Cost / km (Mn USD)", y = "")
+  
+```
+
+### +India
+
+```{r}
+transit_cost %>% 
+  filter(!is.na(cost_km_millions),
+         tunnel_per == 1,
+         country == "India") %>% 
+  mutate(city = fct_lump(city, 10)) %>% 
+  add_count(city) %>% 
+  mutate(city = glue("{city} ({n})"),
+         city = fct_reorder(city, cost_km_millions)) %>% 
+  
+  ggplot(aes(cost_km_millions, city)) +
+  geom_boxplot() +
+  scale_x_continuous(labels = dollar) +
+  labs(x = "Cost/km (Millions USD)",
+       y = "") 
+```
+
+### +India(without tunner_per=1)
+
+```{r}
+transit_cost %>% 
+  filter(!is.na(cost_km_millions),
+         # tunnel_per == 1,
+         country == "India") %>% 
+  mutate(city = fct_lump(city, 10)) %>% 
+  add_count(city) %>% 
+  mutate(city = glue("{city} ({n})"),
+         city = fct_reorder(city, cost_km_millions)) %>% 
+  
+  ggplot(aes(cost_km_millions, city)) +
+  geom_boxplot() +
+  scale_x_continuous(labels = dollar) +
+  labs(x = "Cost (Millions USD)",
+       y = "") 
+```
+
+### +China
+
+```{r}
+transit_cost %>% 
+  filter(!is.na(cost_km_millions),
+         tunnel_per == 1,
+         country == "China") %>% 
+  mutate(city = fct_lump(city, 10)) %>% 
+  add_count(city) %>% 
+  mutate(city = glue("{city} ({n})"),
+         city = fct_reorder(city, cost_km_millions)) %>% 
+  
+  ggplot(aes(cost_km_millions, city)) +
+  geom_boxplot() +
+  scale_x_continuous(labels = dollar) +
+  labs(x = "Cost/km (Millions USD)",
+       y = "") 
+```
+
+## errorbarh {.tabset .tabset-fade .tabset-pills}
+
+### India 
+
+```{r}
+transit_cost %>%
+  filter(country == "India",
+         !is.na(start_year),
+         !is.na(end_year)) %>%
+  mutate(city = fct_lump(city, 5)) %>%
+  mutate(line = fct_reorder(line, year)) %>%
+  ggplot(aes(xmin = start_year, xmax = end_year, y = line,
+             color = city,
+             size = real_cost)) +
+  geom_errorbarh(height = .1) +
+  labs(title = "India line Projects",
+       x = "Year",
+       y = "",
+       color = "City")
+```
+
+
+### China 
+
+```{r}
+transit_cost %>% 
+  filter(country == "China",
+         city == "Shanghai",
+         !is.na(start_year),
+         !is.na(end_year)) %>% 
+  mutate(city = fct_lump(city, 5)) %>% 
+  mutate(line = fct_reorder(line, year)) %>% 
+  
+  ggplot(aes(xmin = start_year, xmax = end_year, y = line, color = city, size = real_cost)) +
+  geom_errorbarh(height = .2) +
+  labs(title = "China line projects",
+       x = "Year", y ="", color = "City"
+       )
+```
+
+## India city wise {.tabset .tabset-fade .tabset-pills}
+
+```{r}
+transit_cost %>% 
+  filter(country == "India")
+```
+
+### Projects timeline
+
+```{r}
+transit_cost %>% 
+  filter(country == "India",
+         !is.na(start_year),
+         !is.na(end_year)) %>%
+  mutate(city = fct_reorder(city, year, .fun = max)) %>% 
+  
+  ggplot(aes(xmin = start_year, xmax = end_year, y = city, color = rr, size = tunnel_per)) +
+  geom_errorbarh(height = 0.2) +
+  labs(title = "Indian cities Projects timeline",
+       subtitle = "Size based on tunner_per")
+  
+```
+
+### Length in Projects
+
+```{r}
+transit_cost %>% 
+  filter(country == "India",
+         # !is.na(start_year),
+         # !is.na(end_year)
+         ) %>%
+  mutate(city = fct_reorder(city, length, sum)) %>% 
+  
+  ggplot(aes(x = length, y = city, fill = line)) +
+  geom_col() +
+  labs(title = "Total Lenth of Projects across Indian cities",
+       subtitle = "color based on Project Lines")
+  
+```
+
+### Projects cost
+
+```{r}
+transit_cost %>% 
+  filter(country == "India") %>%
+  mutate(city = fct_reorder(city, real_cost, sum)) %>% 
+  
+  ggplot(aes(x = real_cost, y = city, fill = year, group = -year)) +
+  geom_col() +
+  scale_x_continuous(label = scales::comma_format()) +
+  labs(title = "Total real cost of Projects across Indian cities",
+       subtitle = "color based on Year of Project Lines",
+       fill = "Years") +
+  scale_fill_viridis_b()
+```
+
+## Median Cost
+
+```{r}
+transit_cost %>% 
+  filter(tunnel_per == 1,
+         end_year <= 2020,
+         country == "China") %>% 
+  group_by(year = (year %/% 5) * 5) %>% 
+  summarise(median_cost_km = median(cost_km_millions),
+            n = n()) %>% 
+  
+  ggplot(aes(year, median_cost_km)) +
+  geom_line() +
+  geom_point(aes(size = n))
+```
+
+```{r}
+transit_cost %>% 
+  filter(
+    # tunnel_per == 1,
+         end_year <= 2020,
+         country == "India") %>% 
+  group_by(year = (year %/% 5) * 5) %>% 
+  summarise(median_cost_km = median(cost_km_millions),
+            n = n()) %>% 
+  
+  ggplot(aes(year, median_cost_km)) +
+  geom_line() +
+  geom_point(aes(size = n))
+```
+
+
+```{r}
+transit_cost %>% 
+  filter(
+    # tunnel_per == 1,
+         # end_year <= 2020,
+         country == "India") %>% 
+  group_by(city, 
+           year = (year %/% 5) * 5
+           ) %>% 
+  summarise(median_cost_km = median(cost_km_millions),
+            n = n()) %>% 
+  
+  ggplot(aes(year, median_cost_km, color = city)) +
+  geom_line() +
+  geom_point(aes(size = n))
+```
+
+```{r}
+transit_cost %>%
+  filter(
+    # tunnel_per == 1,
+    # end_year <= 2020,
+         country == "India") %>%
+  mutate(year = (year %/% 5) * 5,
+         city = fct_lump(city, 5)) %>% 
+  
+  ggplot(aes(year, cost_km_millions, group = year)) +
+  geom_boxplot(outlier.size = -1) +
+  geom_jitter(aes(color = city), height = 0, width = 1) +
+  expand_limits(y = 0) +
+  labs(y = "Cost/km (Real USD in Millions)",
+       x = "Year",
+       title = "Cost distr./ km in China")
+```
+
+```{r}
+library(ggforce)
+```
+
+```{r}
+transit_cost %>%
+  filter(
+    # tunnel_per == 1,
+    # end_year <= 2020,
+         country == "India") %>%
+  mutate(year = (year %/% 5) * 5,
+         city = fct_lump(city, 5)) %>% 
+  
+  ggplot(aes(year, cost_km_millions, group = year)) +
+  # geom_boxplot(outlier.size = -1) +
+  geom_violin(outlier.size = -1, draw_quantiles = c(.25,.5,.75)) +
+  geom_sina(aes(color = city)) +
+  # geom_jitter(aes(color = city), height = 0, width = 1) +
+  expand_limits(y = 0) +
+  labs(y = "Cost/km (Real USD in Millions)",
+       x = "Year",
+       title = "Cost distr./ km in India")
+```
+
+```{r}
+transit_cost %>%
+  filter(
+    # tunnel_per == 1,
+    # end_year <= 2020,
+         country == "India") %>%
+  # mutate(year = (year %/% 5) * 5,
+  #        city = fct_lump(city, 5)) %>% 
+  
+  ggplot(aes(x = city, y = cost_km_millions, color = year)) +
+  # geom_boxplot(outlier.size = -1) +
+  geom_violin(outlier.size = -1, draw_quantiles = c(.25,.5,.75)) +
+  geom_sina() +
+  # geom_jitter(aes(color = city), height = 0, width = 1) +
+  expand_limits(y = 0) +
+  labs(y = "Cost/km (Real USD in Millions)",
+       x = "City",
+       title = "Cost distr./ km in India") +
+  scale_colour_viridis_b()
+```
+
+
+```{r}
+transit_cost %>%
+  filter(tunnel_per == 1,
+         end_year <= 2020,
+         country == "China") %>%
+  mutate(city = fct_lump(city, 4)) %>%
+  
+  ggplot(aes(x = stations / length, y = cost_km_millions, 
+             size = length, color = city)) +
+  geom_point() +
+  expand_limits(x = 0, y = 0) +
+  labs(x = "Stations / km", "Cost / kilometer",
+       y = "Cost / km")
+```
+
+```{r}
+transit_cost %>%
+  filter(
+    # tunnel_per == 1,
+    # end_year <= 2020,
+    country == "India") %>%
+  mutate(city = fct_lump(city, 4)) %>%
+  
+  ggplot(aes(x = length/ stations , y = cost_km_millions, 
+             size = length, color = city)) +
+  geom_point() +
+  expand_limits(x = 0, y = 0) +
+  labs(title = "India: Avg Distance b/w Stations Vs Cost",
+       subtitle = "Size of bubble depends on length of Project",
+       x = "Distance b/w Stations (km)", y = "Cost / kilometer")
+```
+
+
+```{r}
+transit_cost %>%
+  # filter(
+    # tunnel_per == 1,
+    # end_year <= 2020,
+    # country == "India") %>%
+  mutate(country = fct_lump(country, 15)) %>%
+  
+  ggplot(aes(x = length/ stations , y = cost_km_millions, 
+             size = length, color = country)) +
+  geom_point() +
+  expand_limits(x = 0, y = 0) +
+  labs(title = "World: Avg Distance b/w Stations Vs Cost",
+       subtitle = "Size of bubble depends on length of Project",
+       x = "Distance b/w Stations (km)", y = "Cost / kilometer")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
